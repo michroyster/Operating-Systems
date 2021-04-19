@@ -5,40 +5,32 @@
 #include <string.h>
 #include <time.h>
 #include <dirent.h>
-#include "Reservation.c"
+#include "Reservation.h"
+#include "Server.h"
 
 #define MAX_SEATS 27
 #define BUFFER_SIZE 512
 
 // need a semaphore for writing to file
 
-void    get_date(char* date, char* tomorrow);
-int     file_exists(char *filename);
-void    make_reservation(char server, Reservation reservation);
-void    inquiry(char* ticket, char* info);
-void    update_train_seats(char* ticket, char* seats); // modify
-void    cancel_reservation(char* ticket);
-void    available_seats(int date, char* options);
-
-int main(){
-    char server_name = 'A'; // this should later be a parameter of Server(char name)
+void Server(char name){
+    char server_name = name; // this should later be a parameter of Server(char name)
 
     Reservation reservation = {"Michael", "1-1-1900", "M", 12345, "4-16-2021", 1, "D2"};
 
-    // make_reservation(server_name, reservation);
-    // update_train_seats("4172021-3", "B3");
+    make_reservation(server_name, reservation);
+    update_train_seats("4172021-3", "B3");
 
-    // char info[512];
-    // inquiry("4172021-3", info);
-    // printf("%s\n", info);
+    char info[512];
+    inquiry("4172021-3", info);
+    printf("%s\n", info);
 
-    // cancel_reservation("4162021-2");
+    cancel_reservation("4162021-2");
     
-    // char arr[3*9*4+1];
-    // available_seats(4162021, arr);
-    // printf("%s\n", arr);
-    
-    return 0;
+    char arr[3*9*4+1];
+    available_seats(4162021, arr);
+    printf("%s\n", arr);
+
 }
 
 // Get date for today and tomorrow
