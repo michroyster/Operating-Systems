@@ -1,36 +1,43 @@
 // Author: Michael Royster
+// Email: micaher@okstate.edu
+// Need to add functionality for a receipt
+// Need to implement synchronization and priority for customers 
+    //based on # seats purchased
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
 #include <dirent.h>
+#include <semaphore.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "Reservation.h"
 #include "Server.h"
 
 #define MAX_SEATS 27
 #define BUFFER_SIZE 512
 
-// need a semaphore for writing to file
+
 
 void Server(char name){
     char server_name = name; // this should later be a parameter of Server(char name)
 
-    Reservation reservation = {"Michael", "1-1-1900", "M", 12345, "4-16-2021", 1, "D2"};
-
-    make_reservation(server_name, reservation);
-    update_train_seats("4172021-3", "B3");
-
     char info[512];
-    inquiry("4172021-3", info);
-    printf("%s\n", info);
-
-    cancel_reservation("4162021-2");
+    inquiry("4172021-2", info);
+    printf("%c\n", server_name);
+    printf("%s\n",info);
     
     char arr[3*9*4+1];
     available_seats(4162021, arr);
     printf("%s\n", arr);
 
+
+    // Reservation reservation = {"Michael", "1-1-1900", "M", 12345, "4-16-2021", 1, "D2"};
+    // make_reservation(server_name, reservation);
+    // update_train_seats("4172021-3", "B3");
+    // cancel_reservation("4162021-2");
 }
 
 // Get date for today and tomorrow
@@ -71,7 +78,9 @@ void make_reservation(char server, Reservation reservation){
     char buffer[BUFFER_SIZE];
     int tick = 1;
     FILE *file;
-    
+
+    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
+    sem_wait(file_semaphore);
 
     if (file_exists(filename)){
         file = fopen(filename, "r");
@@ -88,15 +97,17 @@ void make_reservation(char server, Reservation reservation){
     sprintf(buffer_out, "%s\t%c\t%s\t%s\t%s\t%d\t%s\t%s\tOG\n", ticket, server, reservation.customerName, reservation.dob, reservation.gender, reservation.govID, reservation.travelDate, reservation.seat);
     fprintf(file, "%s", buffer_out);
     fclose(file);
+    sem_post(file_semaphore);
 }
 
-// Has critical section - Need to pack up the data to send over socket
+// Has critical section - READ ONLY
 void inquiry(char *ticket, char* info){
     // find ticket
     char date[9];
     for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
     char filename[16];
     sprintf(filename, "%s.txt", date);
+
     if (file_exists(filename)){
         char buffer[512];
         char temp[512];
@@ -124,7 +135,7 @@ void inquiry(char *ticket, char* info){
     }
 }
 
-// Has critical section
+// Has critical section - WRITE
 void update_train_seats(char* ticket, char* seat){
     // create filename from date
     char date[9];
@@ -140,6 +151,10 @@ void update_train_seats(char* ticket, char* seat){
     int count = 0;
     int flag = 0;
     FILE *file;
+
+    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
+    sem_wait(file_semaphore);
+
     if (file_exists(filename)){
         file = fopen(filename, "r");
         fgets(line, sizeof(line), file);
@@ -176,9 +191,10 @@ void update_train_seats(char* ticket, char* seat){
     }else{
         printf("Ticket not found!\n");
     }
+    sem_post(file_semaphore);
 }
 
-// Has critical section
+// Has critical section - WRITE
 void cancel_reservation(char* ticket){
         // create filename from date
     char date[9];
@@ -194,6 +210,7 @@ void cancel_reservation(char* ticket){
     int count = 0;
     int flag = 0;
     FILE *file;
+
     if (file_exists(filename)){
         file = fopen(filename, "r");
         fgets(line, sizeof(line), file);
@@ -220,9 +237,10 @@ void cancel_reservation(char* ticket){
     }else{
         printf("Ticket not found!\n");
     }
+
 }
 
-// Has critical section
+// Has critical section - READ ONLY
 void available_seats(int date, char* options){
     char all_seats[3][9][4];
     char x[4];
@@ -244,6 +262,12 @@ void available_seats(int date, char* options){
     int count = 0;
     sprintf(filename, "%d.txt", date);
     FILE *file;
+
+    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
+    sem_wait(file_semaphore);
+    printf("Entering critical section, value of semaphore %ld\n", file_semaphore->__align);
+    sleep(2);
+
     if (file_exists(filename)){
         file = fopen(filename, "r");
         fgets(buffer, sizeof(buffer), file);
@@ -277,4 +301,8 @@ void available_seats(int date, char* options){
             }
         }
     }
+    printf("waiting in critical section\n");
+    sleep(3);
+    sem_post(file_semaphore);
+
 }
