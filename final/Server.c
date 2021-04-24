@@ -1,308 +1,165 @@
-// Author: Michael Royster
-// Email: micaher@okstate.edu
-// Need to add functionality for a receipt
-// Need to implement synchronization and priority for customers 
-    //based on # seats purchased
-
 #include <stdio.h>
+#include <string.h> 	
+#include <unistd.h> 
+#include <sys/types.h> 	
+#include <sys/stat.h> 	
+#include <fcntl.h> 		
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <time.h>
-#include <dirent.h>
+#include <sys/ipc.h>
+#include <sys/wait.h>
+#include <arpa/inet.h> 	// client
+#include <sys/socket.h>
+#include <netinet/in.h> // server
+#include <pthread.h>
 #include <semaphore.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include "Reservation.h"
-#include "Server.h"
+#include <ctype.h>
 
-#define MAX_SEATS 27
-#define BUFFER_SIZE 512
+#define IP "127.0.0.1"
+#define PORT 8019
+ 
+#define BUFFER_SIZE 1024
+#define THREAD_POOL_SIZE 1
 
+sem_t semaphore, ready;
+int num_seats = 27;
+int thread_in_use[THREAD_POOL_SIZE] = {0};
 
-
-void Server(char name){
-    char server_name = name; // this should later be a parameter of Server(char name)
-
-    char info[512];
-    inquiry("4172021-2", info);
-    printf("%c\n", server_name);
-    printf("%s\n",info);
-    
-    char arr[3*9*4+1];
-    available_seats(4162021, arr);
-    printf("%s\n", arr);
-
-
-    // Reservation reservation = {"Michael", "1-1-1900", "M", 12345, "4-16-2021", 1, "D2"};
-    // make_reservation(server_name, reservation);
-    // update_train_seats("4172021-3", "B3");
-    // cancel_reservation("4162021-2");
+void test(int purchased_seats)
+{
+	if (purchased_seats > num_seats)
+	{
+		// do something
+		puts("not enough seats left");
+	}
+	num_seats -= purchased_seats;
+	char out[128];
+	sprintf(out, "Number of seats remaining: %d", num_seats);
+	puts(out);
+	sleep(4);
 }
 
-// Get date for today and tomorrow
-void get_date(char* today, char* tomorrow){
-    time_t t = time(NULL);
-    struct tm tm = *localtime(&t);
-    snprintf(today, sizeof(char)*10, "%d-%d-%d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-    snprintf(tomorrow, sizeof(char)*10, "%d-%d-%d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday+1);
+void *server_thread(void *arg)
+{
+	int purchased_seats, sock, client_choice;										// variables
+	char buffer[BUFFER_SIZE] = {0};													// variable for receiving FROM client 
+	char message[BUFFER_SIZE-24];													// variable for sending TO client 
+	
+	char *temp = (char *)arg;														// convert the void * argument into a char array
+	char *t = strtok(temp, ",");													// get the first string token
+	char *tt = strtok(NULL, ",");													// get the second string token 
+	
+	sock = atoi(t);																	// convert the first string token into an integer (sock)
+	int id = atoi(tt);																// convert the second string token into an integer (thread_id)
+	
+	//sock = *((int *)arg);															// old int (socket number) argument only for thread 
+	
+	recv(sock, buffer, BUFFER_SIZE, 0);
+	purchased_seats = atoi(buffer);													// example user input 
+	
+	//sem_wait(&semaphore);
+	test(purchased_seats);															// example semaphore access control
+	//sem_post(&semaphore);
+	
+	sprintf(message, "You bought %d tickets, there are now %d seats remaining\n", purchased_seats, num_seats);
+	send(sock, message, BUFFER_SIZE, 0);											// example send method
+	/*
+	// TODO - Fully flesh out the menu transmission between Client/Server
+	while(1)
+	{
+		// send_menu();
+		recv(sock, buffer, BUFFER_SIZE, 0);
+		client_choice = atoi(buffer);
+		if (buffer == 1) make_reservation();										// these functions will need to communicate with the user according to their specifications; and parse their input into variables
+		else if (buffer == 2) make_inquiry();										// whether they will call someone else's functions; or be implemented into them; I don't know
+		else if (buffer == 3) modify_reservation();
+		else if (buffer == 4) cancel_reservation();
+		else if (buffer == 5) break;												// breaks while loop if user enters 5
+		else send_error(); 															// tells the user to enter a correct choice
+	}	*/
+	
+	//send_exit_message();
+	
+	//strcpy(buffer, "");
+	//strcpy(message, "");
+	
+	thread_in_use[id] = 0;
+	
+	//puts(tt);																		// print the thread_id (debugging purposes)
+
+	close(sock);																	// close the socket with the current client 
+	sem_post(&ready);																// signal that there is a thread open for a new client
+	//puts("subthread exited");
+	pthread_exit(NULL);																// exit the thread 
 }
 
-// return 1 if filename is in directory
-int file_exists(char *filename){
-    DIR *d;
-    struct dirent *dir;
-    d = opendir(".");
-    if (d){
-        while ((dir =readdir(d)) != NULL){
-            if (strcmp(filename, dir->d_name) == 0){
-                closedir(d);
-                return 1;
-            }
-        }
-    }
-    closedir(d);
-    return 0;
+int Server(char name, int port)
+{
+	int server_fd, sock, thread_id = 0;
+	struct sockaddr_in address;
+	struct sockaddr_storage storage;
+	socklen_t addrlen;																// declare the address length
+	pthread_t thread_pool[THREAD_POOL_SIZE];										// declare the thread pool array
+	
+	sem_init(&semaphore, 0, 1);														// initialize an example semaphore used to limit access to a variable
+	sem_init(&ready, 0, THREAD_POOL_SIZE);											// initialize the semaphore used for enforcing the limit on the threadpool; and waiting 
+																						// threads to be available
+	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)							// try to create the server_fd socket
+	{
+		puts("Server socket creation failed\n");									// server_fd socket creation failed
+		return 1;																	// exit program
+	}
+	else puts("Server socket creation success\n");									// server_fd socket creation succeeded
+	
+	address.sin_family = AF_INET;													// set ipv4
+	address.sin_port = htons(port);													// set the port
+	address.sin_addr.s_addr = INADDR_ANY;											// set the IP? address(es) that the socket can connect to(from?)
+	
+	if ((bind(server_fd, (struct sockaddr *)&address, sizeof(address))) < 0)		// try to bind the server_fd socket
+	{
+		puts("Server socket bind failed\n");										// binding failed
+		return 1;																	// exit program
+	}
+	else puts("Server socket bind success");										// binding succeeded
+	
+	if (listen(server_fd, THREAD_POOL_SIZE * 3) < 0)								// try to listen on the server_fd socket
+	{
+		puts("Server socket listen failed");										// listening failed
+		return 1;																	// exit program
+	}
+	else puts("Listening...");														// listening did not fail
+	
+	while(1)																		// infinite loop
+	{
+		sem_wait(&ready); 															// wait for a thread to be available
+		
+		addrlen = sizeof(storage);													// set the address length
+		if ((sock = accept(server_fd, (struct sockaddr *)&address, &addrlen)) < 0) 	// create a socket for the thread and new client
+		{
+			puts("Server socket accept failed");
+			return 1;
+		}
+		//else puts("Server socket accept success");
+		
+		while (thread_in_use[thread_id])
+		{
+			thread_id++;
+			if (thread_id >= THREAD_POOL_SIZE) thread_id = 0;
+			
+		}
+		thread_in_use[thread_id] = 1; 		
+		//		
+		char temp[10];
+		sprintf(temp, "%d,%d", sock, thread_id);
+		puts(temp);
+		pthread_create(&thread_pool[thread_id], NULL, server_thread, (void *)temp);
+		//pthread_create(&thread_pool[thread_id], NULL, server, &sock); // call/create the thread with the new socket
+		//pthread_create(&thread_pool[thread_id++], NULL, server, &sock); // call/create the thread with the new socket
+	}
+	
+	close(server_fd);
+	sem_destroy(&semaphore);
+	sem_destroy(&ready);
+	puts("server exited");
+	return 0;
 }
 
-// Has a critical section - need to use reservation date instead of current date
-void make_reservation(char server, Reservation reservation){  
-    
-    time_t t = time(NULL);
-    struct tm tm = *localtime(&t);
-    char today[9];
-    snprintf(today, sizeof(char) * 8, "%d%d%d", tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900);
-    
-    char filename[24];
-    sprintf(filename, "%s.txt", today);
-    char buffer[BUFFER_SIZE];
-    int tick = 1;
-    FILE *file;
-
-    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
-    sem_wait(file_semaphore);
-
-    if (file_exists(filename)){
-        file = fopen(filename, "r");
-        while(fgets(buffer, sizeof(buffer), file)){
-            tick++;
-        }
-        fclose(file);
-    }
-    
-    char ticket[24];
-    sprintf(ticket, "%s-%d", today, tick);
-    file = fopen(filename, "a");
-    char buffer_out[BUFFER_SIZE];
-    sprintf(buffer_out, "%s\t%c\t%s\t%s\t%s\t%d\t%s\t%s\tOG\n", ticket, server, reservation.customerName, reservation.dob, reservation.gender, reservation.govID, reservation.travelDate, reservation.seat);
-    fprintf(file, "%s", buffer_out);
-    fclose(file);
-    sem_post(file_semaphore);
-}
-
-// Has critical section - READ ONLY
-void inquiry(char *ticket, char* info){
-    // find ticket
-    char date[9];
-    for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
-    char filename[16];
-    sprintf(filename, "%s.txt", date);
-
-    if (file_exists(filename)){
-        char buffer[512];
-        char temp[512];
-        char *token;
-        int flag = 0;
-        FILE *file = fopen(filename, "r");
-        fgets(buffer, sizeof(buffer), file);
-        while(!feof(file)){
-            strcpy(temp, buffer);
-            token = strtok(temp, "\t");
-            if (strcmp(ticket, token) == 0){
-                flag = 1;
-                for (int i = 0; i < sizeof(buffer); i++){
-                    *(info + i) = *(buffer + i);
-                }
-                fclose(file);
-                return;
-            }
-            fgets(buffer, sizeof(buffer), file);
-        }
-        if (!flag) printf("Ticket not found.\n");
-        fclose(file);
-    }else {
-        printf("Ticket not found!");
-    }
-}
-
-// Has critical section - WRITE
-void update_train_seats(char* ticket, char* seat){
-    // create filename from date
-    char date[9];
-    for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
-    char filename[16];
-    sprintf(filename, "%s.txt", date);
-
-    char buffer_in[MAX_SEATS][BUFFER_SIZE];
-    char line[BUFFER_SIZE];
-    char temp[BUFFER_SIZE];
-    char buffer_out[BUFFER_SIZE];
-    char *token;
-    int count = 0;
-    int flag = 0;
-    FILE *file;
-
-    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
-    sem_wait(file_semaphore);
-
-    if (file_exists(filename)){
-        file = fopen(filename, "r");
-        fgets(line, sizeof(line), file);
-        while(!feof(file)){
-            strcpy(temp, line);
-            token = strtok(temp, "\t");
-            if (strcmp(token, ticket) == 0){
-                flag = 1;
-                strcpy(buffer_out, token);
-                strcat(buffer_out, "\t");
-                for (int i = 0; i < 6; i++){
-                    token = strtok(NULL, "\t");
-                    strcat(buffer_out, token);
-                    strcat(buffer_out, "\t");
-                }
-                strcat(buffer_out, seat);
-                strcat(buffer_out, "\tMD");
-                strcat(buffer_out, "\n");
-                strcpy(buffer_in[count], buffer_out);
-            }else{
-                strcpy(buffer_in[count], line);
-            }
-            fgets(line, sizeof(buffer_in), file);
-            count++;
-        }
-        if (!flag) printf("Ticket not found!\n");
-        fclose(file);
-
-        file = fopen(filename, "w");
-        for (int i = 0; i < count; i++){
-            fprintf(file, "%s", buffer_in[i]);
-        }
-        fclose(file);
-    }else{
-        printf("Ticket not found!\n");
-    }
-    sem_post(file_semaphore);
-}
-
-// Has critical section - WRITE
-void cancel_reservation(char* ticket){
-        // create filename from date
-    char date[9];
-    for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
-    char filename[16];
-    sprintf(filename, "%s.txt", date);
-
-    char buffer_in[MAX_SEATS][BUFFER_SIZE];
-    char line[BUFFER_SIZE];
-    char temp[BUFFER_SIZE];
-    char buffer_out[BUFFER_SIZE];
-    char *token;
-    int count = 0;
-    int flag = 0;
-    FILE *file;
-
-    if (file_exists(filename)){
-        file = fopen(filename, "r");
-        fgets(line, sizeof(line), file);
-        while(!feof(file)){
-            strcpy(temp, line);
-            token = strtok(temp, "\t");
-            if (strcmp(token, ticket) == 0){
-                flag = 1;
-                count--;
-            }else{
-                strcpy(buffer_in[count], line);
-            }
-            fgets(line, sizeof(buffer_in), file);
-            count++;
-        }
-        if (!flag) printf("Ticket not found!\n");
-        fclose(file);
-
-        file = fopen(filename, "w");
-        for (int i = 0; i < count; i++){
-            fprintf(file, "%s", buffer_in[i]);
-        }
-        fclose(file);
-    }else{
-        printf("Ticket not found!\n");
-    }
-
-}
-
-// Has critical section - READ ONLY
-void available_seats(int date, char* options){
-    char all_seats[3][9][4];
-    char x[4];
-    char first = 'A';
-    int num = 1;
-    for (int i = 0; i < 3; i ++){
-        for (int j = 0; j < 9; j++){
-            sprintf(x, "%c%d", first + i, num + j);
-            strcpy(all_seats[i][j], x);
-        }
-    }
-    char taken[MAX_SEATS][3];
-
-    char filename[16];
-    char buffer[BUFFER_SIZE];
-    char temp[BUFFER_SIZE];
-    char available[100];
-    char *token;
-    int count = 0;
-    sprintf(filename, "%d.txt", date);
-    FILE *file;
-
-    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 0);
-    sem_wait(file_semaphore);
-    printf("Entering critical section, value of semaphore %ld\n", file_semaphore->__align);
-    sleep(2);
-
-    if (file_exists(filename)){
-        file = fopen(filename, "r");
-        fgets(buffer, sizeof(buffer), file);
-        strcpy(temp, buffer);
-        while(!feof(file)){
-            token = strtok(temp, "\t");
-            for (int i = 0; i < 7; i++) token = strtok(NULL, "\t");
-            strcpy(taken[count], token);
-            fgets(buffer, sizeof(buffer), file);
-            strcpy(temp, buffer);
-            count++;
-        }
-    }else{
-        printf("Ticket not found!\n");
-    }
-    for (int i = 0; i < 3; i++){
-        for (int j = 0; j < 9; j++){
-            for (int k = 0; k < count; k++){
-                if (strcmp(all_seats[i][j], taken[k]) == 0){
-                    strcpy(all_seats[i][j], "XX");
-                }
-            }
-        }
-    }
-    char row[37];
-    for (int i = 0; i < 3; i ++){
-        for (int j = 0; j < 9; j++){
-            if (strcmp(all_seats[i][j], "XX") != 0){
-                strcat(options, all_seats[i][j]);
-                strcat(options, " ");
-            }
-        }
-    }
-    printf("waiting in critical section\n");
-    sleep(3);
-    sem_post(file_semaphore);
-
-}

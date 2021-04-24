@@ -7,31 +7,38 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <semaphore.h>
 #include "Reservation.h"
+#include "Backend.h"
 #include "Server.h"
 
+#define PORT 8019
 
-int main(){
-    sem_t *file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 1);
-    printf("the value of semaphore is: %ld\n", file_semaphore->__align);
-    // if ((file_semaphore = sem_open("/file_semaphore", O_CREAT, 0666, 1)) == SEM_FAILED)
-    // {
-    //     perror("Error opening semaphore!\n");
-    // }
-    printf("hi\n");
-    if(fork() == 0){
-        Server('B');
-        if(fork() == 0){
-            Server('C');
-            if (fork () == 0){
-                Server('D');
-            }
+int main(){  
+    // Create semaphores and shared memory object
+    sem_t *file_write;
+    sem_t *file_read;
+    int shm_fd;
+    int *ptrReaders;
+    init_sync(file_write, file_read, shm_fd, ptrReaders);
+
+    // create a bunch of processes to read at the same time
+    char name = 'A';
+    int parentid = getpid();
+    for (int i = 0; i < 5; i++){
+        if (fork() == 0){
+            Server(name + i, PORT + i);
+            return 0;
         }
-    }else{
-        Server('A');
     }
-    wait(NULL);
-    printf("bye\n");
+
+    for(int j = 0; j < 5; j++){
+        wait(NULL);
+    }
+
+    // desync
+    desync(file_write, file_read, shm_fd, ptrReaders);
+
     return 0;
 }

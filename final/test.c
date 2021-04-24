@@ -1,36 +1,43 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <time.h>
-#include <semaphore.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-
-void func(char *str){
-    printf("%s\n", str);
-}
+#include <semaphore.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include "Reservation.h"
+#include "Backend.h"
 
 
 int main(){
-    // char arr[3][9][3];
-    // char temp[3];
-    // char first = 'A';
-    // int num = 1;
+    // Create semaphores and shared memory object
+    sem_t *file_write;
+    sem_t *file_read;
+    int shm_fd;
+    int *ptrReaders;
+    init_sync(file_write, file_read, shm_fd, ptrReaders);
 
-    // for (int i = 0; i < 3; i ++){
-    //     for (int j = 0; j < 9; j++){
-    //         sprintf(temp, "%c%d", first + i, num + j);
-    //         strcpy(arr[i][j], temp);
+    // create a bunch of processes to read at the same time
+    char name = 'A';
+    ServerX(name);
+    // int parentid = getpid();
+    // for (int i = 0; i < 5; i++){
+    //     if (fork() == 0){
+    //         ServerX(name + i);
+    //         return 0;
     //     }
     // }
 
-    //     for (int i = 0; i < 3; i ++){
-    //         for (int j = 0; j < 9; j++){
-    //             printf("%s\n", arr[i][j]);
-    //     }
+    // for(int j = 0; j < 5; j++){
+    //     wait(NULL);
     // }
-    sem_unlink("/file_semaphore");
 
-    return 0;    
+    // desync
+    desync(file_write, file_read, shm_fd, ptrReaders);
+
+    return 0;
 }

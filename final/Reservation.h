@@ -11,6 +11,7 @@ typedef struct Reservation{
     char travelDate[32];
     int numberTravelers;
     char seat[4];
+    char ticket_number[24];
 } Reservation;
 
 #endif
