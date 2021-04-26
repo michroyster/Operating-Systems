@@ -36,8 +36,10 @@ int main(){
     //     wait(NULL);
     // }
 
-    // desync
+    // // desync
     desync(file_write, file_read, shm_fd, ptrReaders);
+
+    // printf("%ld\n", sizeof(Reservation)*27);
 
     return 0;
 }

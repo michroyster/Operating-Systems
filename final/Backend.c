@@ -1,11 +1,5 @@
 // Author: Michael Royster
 // Email: micaher@okstate.edu
-// Need to add functionality for a receipt 
-    // will work on once its possible to receive multiple reservations
-// Need to implement synchronization and priority for customers
-    //based on # seats purchased
-    // man getpriority()
-    // man setpriority()
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,15 +55,15 @@ void ServerX(char name){
     // }
     // free(info);
 
-    Reservation reservation1 = {"Michael", "1-1-1900", "M", 12345, "4172021", 2, "D2"};
-    Reservation reservation2 = {"Sean", "1-1-2122", "M", 45768, "4772021", 2, "A3"};
-    Reservation *reservations = (Reservation*)malloc(sizeof(Reservation) * 2);
-    *reservations = reservation1;
-    *(reservations+1) = reservation2;
+    // Reservation reservation1 = {"Michael", "1-1-1900", "M", 12345, "4172021", 2, "D2"};
+    // Reservation reservation2 = {"Sean", "1-1-2122", "M", 45768, "4772021", 2, "A3"};
+    // Reservation *reservations = (Reservation*)malloc(sizeof(Reservation) * 2);
+    // *reservations = reservation1;
+    // *(reservations+1) = reservation2;
 
-    make_reservation(server_name, reservations, 2);
+    // make_reservation(server_name, reservations, 2);
     // update_train_seats("4172021-4", "Paul", "B3");
-    // cancel_reservation("4172021-6", "Joseph");
+    cancel_reservation("4172021-13");
     // char arr[112];
     // available_seats(4172021, arr);
     // printf("%s\n", arr);
@@ -281,8 +275,8 @@ void update_train_seats(char* ticket, char *name, char* seat){
 }
 
 // Has critical section - WRITE, threadsafe
-// Updated 4/23, Now requires both ticket number and name
-void cancel_reservation(char* ticket, char* name){
+// Updated 4/25, cancel by ticket number only
+void cancel_reservation(char* ticket){
     // create filename from date
     char date[9];
     for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
@@ -308,14 +302,8 @@ void cancel_reservation(char* ticket, char* name){
             strcpy(temp, line);
             token = strtok_r(temp, "\t", &rest);
             if (strcmp(token, ticket) == 0){
-                token = strtok_r(NULL, "\t", &rest);
-                token = strtok_r(NULL, "\t", &rest);
-                if (strcmp(token, name) == 0){
-                    flag = 1;
-                    count--;
-                }else{
-                    strcpy(buffer_in[count], line);    
-                }
+                flag = 1;
+                count--;
             }else{
                 strcpy(buffer_in[count], line);
             }

@@ -10,7 +10,7 @@ int     file_exists(char *filename);
 void    make_reservation(char server, Reservation* reservation, int numberTravelers);
 void    inquiry(char* ticket, Reservation* info);
 void    update_train_seats(char* ticket,char* name, char* seats); // modify
-void    cancel_reservation(char* ticket, char* name);
+void    cancel_reservation(char* ticket);
 void    available_seats(int date, char* options);
 void    receipt(Reservation *reservations, int numberTravelers, char server);
 int     check_seat(int date, char *seat);
