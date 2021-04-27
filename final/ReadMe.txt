@@ -12,9 +12,10 @@ TODO:
     - Work on menu communication between Server/Client
     
     (Michael)
-    - Improve Backend functions for handling operations with data files
-    - ensure thread safety
-    - Handle priority for processes
+<x> - Improve Backend functions for handling operations with data files
+<x> - ensure thread safety 
+<x> - create receipt
+
     
     (Jareth)
     - Handle priority for threads

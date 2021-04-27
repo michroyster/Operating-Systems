@@ -44,6 +44,7 @@ void desync(sem_t *file_write, sem_t *file_read, int shm_fd, int *ptrReaders){
     sem_close(file_read);
 }
 
+// Testing purposes only
 void ServerX(char name){
     char server_name = name; // this should later be a parameter of Server(char name)
 
@@ -57,13 +58,23 @@ void ServerX(char name){
 
     // Reservation reservation1 = {"Michael", "1-1-1900", "M", 12345, "4172021", 2, "D2"};
     // Reservation reservation2 = {"Sean", "1-1-2122", "M", 45768, "4772021", 2, "A3"};
+
+    Reservation reservation3 = {"Steve", "1-1-2122", "M", 45768, "4172021", 2, "A3"};
+    Reservation reservation4 = {"Johny", "1-1-2122", "M", 45768, "4172021", 2, "A4"};
+    Reservation *reservations = (Reservation*)malloc(sizeof(Reservation) * 2);
+    *reservations = reservation3;
+    *(reservations+1) = reservation4;
+    add_travelers(server_name, reservations, 2, "4172021-2");
+
     // Reservation *reservations = (Reservation*)malloc(sizeof(Reservation) * 2);
     // *reservations = reservation1;
     // *(reservations+1) = reservation2;
-
+    // inquiry("4172021-9", reservations);
+    // printf("1: %s \n2: %s\n", reservations->customerName, (reservations+1)->customerName);
     // make_reservation(server_name, reservations, 2);
-    // update_train_seats("4172021-4", "Paul", "B3");
-    cancel_reservation("4172021-13");
+    // update_train_seats("4172021-9", "Dood", "B3", server_name);
+    // remove_traveler("4172021-19", "Michael");
+    // cancel_reservation("4172021-15");
     // char arr[112];
     // available_seats(4172021, arr);
     // printf("%s\n", arr);
@@ -104,9 +115,9 @@ void make_reservation(char server, Reservation* reservation, int numberTravelers
     // struct tm tm = *localtime(&t);
     // char today[9];
     // snprintf(today, sizeof(char) * 8, "%d%d%d", tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900);
-    int today = atoi(reservation->travelDate);
+    int date = atoi(reservation->travelDate);
     char filename[24];
-    sprintf(filename, "%d.txt", today);
+    sprintf(filename, "%d.txt", date);
     char buffer[BUFFER_SIZE];
     int tick = 1;
     FILE *file;
@@ -123,7 +134,7 @@ void make_reservation(char server, Reservation* reservation, int numberTravelers
     }
     
     char ticket[24];
-    sprintf(ticket, "%d-%d", today, tick);
+    sprintf(ticket, "%d-%d", date, tick);
     for (int j = 0; j < numberTravelers; j++)
         strcpy((reservation+j)->ticket_number, ticket);
     file = fopen(filename, "a");
@@ -136,6 +147,34 @@ void make_reservation(char server, Reservation* reservation, int numberTravelers
     sem_post(file_write);
 
     receipt(reservation, numberTravelers, server);
+}
+
+// Has critical section - Write, threadsafe
+// Adds travelers with the given ticket number
+void add_travelers(char server, Reservation* reservation, int numberNewTravelers, char* ticket){
+    // time_t t = time(NULL);
+    // struct tm tm = *localtime(&t);
+    // char today[9];
+    // snprintf(today, sizeof(char) * 8, "%d%d%d", tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900);
+    int date = atoi(reservation->travelDate);
+    char filename[24];
+    sprintf(filename, "%d.txt", date);
+    char buffer[BUFFER_SIZE];
+    FILE *file;
+
+    sem_t *file_write = sem_open("/file_write", O_CREAT, 0666, 0);
+    sem_wait(file_write);
+
+    for (int j = 0; j < numberNewTravelers; j++)
+        strcpy((reservation+j)->ticket_number, ticket);
+    file = fopen(filename, "a");
+    char buffer_out[BUFFER_SIZE];
+    for (int i = 0; i < numberNewTravelers; i++){
+        sprintf(buffer_out, "%s\t%c\t%s\t%s\t%s\t%d\t%s\t%s\tOG\n", ticket, server, (reservation+i)->customerName, (reservation+i)->dob, (reservation+i)->gender, (reservation+i)->govID, (reservation+i)->travelDate, (reservation+i)->seat);
+        fprintf(file, "%s", buffer_out);
+    }
+    fclose(file);
+    sem_post(file_write);
 }
 
 // Has critical section - READ, threadsafe
@@ -204,7 +243,7 @@ void inquiry(char *ticket, Reservation* info){
 
 // Has critical section - WRITE, threadsafe
 // Updated 4/23, Now requires both ticket number and name
-void update_train_seats(char* ticket, char *name, char* seat){
+void update_train_seats(char* ticket, char *name, char* seat, char server){
     // create filename from date
     char date[9];
     for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
@@ -234,7 +273,7 @@ void update_train_seats(char* ticket, char *name, char* seat){
                 strcpy(buffer_out, token);
                 strcat(buffer_out, "\t");
                 token = strtok_r(NULL, "\t", &rest);
-                strcat(buffer_out, token);
+                strcat(buffer_out, (char[2]){(char) server, '\0'}); // casting char server name as string for strcat
                 strcat(buffer_out, "\t");
                 token = strtok_r(NULL, "\t", &rest);
                 if (strcmp(token, name) == 0){
@@ -304,6 +343,62 @@ void cancel_reservation(char* ticket){
             if (strcmp(token, ticket) == 0){
                 flag = 1;
                 count--;
+            }else{
+                strcpy(buffer_in[count], line);
+            }
+            fgets(line, sizeof(buffer_in), file);
+            count++;
+        }
+        if (!flag) printf("Ticket not found!\n");
+        fclose(file);
+
+        file = fopen(filename, "w");
+        for (int i = 0; i < count; i++){
+            fprintf(file, "%s", buffer_in[i]);
+        }
+        fclose(file);
+    }else{
+        printf("Ticket not found!\n");
+    }
+    sem_post(file_write);
+}
+
+// Has critical section - WRITE, threadsafe
+// Cancel by ticket number and name
+void remove_traveler(char* ticket, char* name){
+    // create filename from date
+    char date[9];
+    for (int i = 0; i < 7; i++) *(date+i) = *(ticket+i);
+    char filename[16];
+    sprintf(filename, "%s.txt", date);
+
+    char buffer_in[MAX_SEATS][BUFFER_SIZE];
+    char line[BUFFER_SIZE];
+    char temp[BUFFER_SIZE];
+    char *rest = temp;
+    char *token;
+    int count = 0;
+    int flag = 0;
+    FILE *file;
+
+    sem_t *file_write = sem_open("/file_write", O_CREAT, 0666, 0);
+    sem_wait(file_write);
+
+    if (file_exists(filename)){
+        file = fopen(filename, "r");
+        fgets(line, sizeof(line), file);
+        while(!feof(file)){
+            strcpy(temp, line);
+            token = strtok_r(temp, "\t", &rest);
+            if (strcmp(token, ticket) == 0){
+                token = strtok_r(NULL, "\t", &rest);
+                token = strtok_r(NULL, "\t", &rest);
+                if (strcmp(token, name) == 0){
+                    flag = 1;
+                    count--;
+                }else{
+                    strcpy(buffer_in[count], line);
+                }
             }else{
                 strcpy(buffer_in[count], line);
             }

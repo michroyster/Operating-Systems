@@ -1,0 +1,17 @@
+*** Probably need to rework and use summary.txt instead
+    of all the differnt dated files.
+
+
+A. change seat
+    use update_train_seat() *** need to use server name
+        requires ticket, name and new seat
+
+B. Change Travel Date
+    1. 
+
+C. Change Number of Travelers
+    1. Get new number of travelers
+        a. If less, use Inquiry to print existing <DONE>
+           travels and choose which to remove
+                i. Then call remove_traveler() on them
+        b. If more, save ticket number and use add_travelers() <Done>

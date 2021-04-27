@@ -22,7 +22,7 @@ int main(){
     init_sync(file_write, file_read, shm_fd, ptrReaders);
 
     // create a bunch of processes to read at the same time
-    char name = 'A';
+    char name = 'B';
     ServerX(name);
     // int parentid = getpid();
     // for (int i = 0; i < 5; i++){

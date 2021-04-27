@@ -8,11 +8,14 @@ void    ServerX(char name);
 void    get_date(char* date, char* tomorrow);
 int     file_exists(char *filename);
 void    make_reservation(char server, Reservation* reservation, int numberTravelers);
+void    add_travelers(char server, Reservation* reservation, int numberNewTravelers, char* ticket);
+void    remove_traveler(char* ticket, char* name);
 void    inquiry(char* ticket, Reservation* info);
-void    update_train_seats(char* ticket,char* name, char* seats); // modify
+void    update_train_seats(char* ticket,char* name, char* seats, char server); // modify
 void    cancel_reservation(char* ticket);
 void    available_seats(int date, char* options);
 void    receipt(Reservation *reservations, int numberTravelers, char server);
 int     check_seat(int date, char *seat);
 void    testX(char name);
+
 #endif
